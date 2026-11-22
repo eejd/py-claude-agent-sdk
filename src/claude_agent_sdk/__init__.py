@@ -634,7 +634,7 @@ def create_sdk_mcp_server(
             return CallToolResult.model_validate(
                 {
                     "content": _convert_tool_content(result.get("content", [])),
-                    "isError": result.get("is_error", False),
+                    "isError": result.get("is_error", result.get("isError", False)),
                 }
             )
         except Exception as e:

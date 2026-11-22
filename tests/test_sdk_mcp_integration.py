@@ -2195,3 +2195,29 @@ class TestTypedDictMcpIntegration:
             first = await client.list_tools("srv")
             second = await client.list_tools("srv")
         assert first == second
+
+
+@pytest.mark.anyio
+async def test_camel_case_is_error_result_is_honored():
+    """Handlers returning the mcp-style ``isError`` key must surface as errors (#1492)."""
+    import claude_agent_sdk as sdk_mcp_module
+
+    captured: dict[str, Any] = {}
+    original = sdk_mcp_module.build_tool_server
+
+    def spy(name, version, tools, run_tool):
+        captured["run_tool"] = run_tool
+        return original(name, version, tools, run_tool)
+
+    @tool("camel", "fails", {"type": "object", "properties": {}})
+    async def camel(args: dict[str, Any]) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": "nope"}], "isError": True}
+
+    sdk_mcp_module.build_tool_server = spy
+    try:
+        create_sdk_mcp_server("camel-server", tools=[camel])
+    finally:
+        sdk_mcp_module.build_tool_server = original
+
+    result = await captured["run_tool"]("camel", {})
+    assert result.is_error is True
