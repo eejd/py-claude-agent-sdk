@@ -343,7 +343,9 @@ def tool(
         - Arguments are validated against the input schema before the function
           is called; invalid input is reported back to Claude as an error result
         - The function should return a dict with a "content" key containing the response
-        - Errors can be indicated by including "is_error": True in the response;
+        - Errors can be indicated by including "is_error": True in the response
+          (the mcp-style "isError" key is accepted as a fallback when "is_error"
+          is absent; when both are present, "is_error" wins);
           an exception raised by the function is reported the same way
     """
 
@@ -634,6 +636,8 @@ def create_sdk_mcp_server(
             return CallToolResult.model_validate(
                 {
                     "content": _convert_tool_content(result.get("content", [])),
+                    # ``is_error`` wins whenever present; the mcp-style
+                    # ``isError`` key is only a fallback when it is absent.
                     "isError": result.get("is_error", result.get("isError", False)),
                 }
             )

@@ -2221,3 +2221,50 @@ async def test_camel_case_is_error_result_is_honored():
 
     result = await captured["run_tool"]("camel", {})
     assert result.is_error is True
+
+
+@pytest.mark.anyio
+async def test_is_error_takes_precedence_over_camel_case_is_error():
+    """``is_error`` wins whenever present; ``isError`` is only a fallback (#1492)."""
+    import claude_agent_sdk as sdk_mcp_module
+
+    captured: dict[str, Any] = {}
+    original = sdk_mcp_module.build_tool_server
+
+    def spy(name, version, tools, run_tool):
+        captured["run_tool"] = run_tool
+        return original(name, version, tools, run_tool)
+
+    cases: dict[str, dict[str, Any]] = {
+        "absent_camel_false": {"content": [{"type": "text", "text": "ok"}], "isError": False},
+        "snake_false_camel_true": {
+            "content": [{"type": "text", "text": "ok"}],
+            "is_error": False,
+            "isError": True,
+        },
+        "snake_true_camel_false": {
+            "content": [{"type": "text", "text": "nope"}],
+            "is_error": True,
+            "isError": False,
+        },
+    }
+    expected = {"absent_camel_false": False, "snake_false_camel_true": False, "snake_true_camel_false": True}
+
+    tools = []
+    for case_name, payload in cases.items():
+
+        @tool(case_name, "case", {"type": "object", "properties": {}})
+        async def handler(args: dict[str, Any], _payload: dict[str, Any] = payload) -> dict[str, Any]:
+            return _payload
+
+        tools.append(handler)
+
+    sdk_mcp_module.build_tool_server = spy
+    try:
+        create_sdk_mcp_server("precedence-server", tools=tools)
+    finally:
+        sdk_mcp_module.build_tool_server = original
+
+    for case_name, want in expected.items():
+        result = await captured["run_tool"](case_name, {})
+        assert result.is_error is want, case_name
